@@ -5,9 +5,9 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
-TelegramBotClient client = new TelegramBotClient(BotSettings.Token);
+TelegramBotClient client = new (BotSettings.Token);
 
-CancellationTokenSource source = new CancellationTokenSource();
+CancellationTokenSource source = new ();
 
 // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
 ReceiverOptions receiverOptions = new()
@@ -26,8 +26,6 @@ var me = await client.GetMeAsync();
 
 Console.WriteLine($"Start listening for @{me.Username}");
 Console.ReadLine();
-
-
 
 // Send cancellation request to stop bot
 source.Cancel();
