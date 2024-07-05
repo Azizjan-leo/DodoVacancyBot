@@ -1,7 +1,5 @@
 ﻿using MainConsole;
-using System.Threading;
 using Telegram.Bot;
-using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -14,10 +12,10 @@ try
 
     TelegramBotClient bot = new(BotSettings.Token, cancellationToken: source.Token);
 
+    Dictionary<long, UserSettings> _usersSettings = new();
+
     const string lang_ru = "Русский";
     const string lang_ky = "Кыргызча";
-
-    string? lang = null;
 
     // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
     ReceiverOptions receiverOptions = new()
@@ -27,37 +25,26 @@ try
 
     async Task OnCallbackQuery(CallbackQuery callbackQuery)
     {
-        if(callbackQuery.Data == lang_ru)
+        var userId = callbackQuery.From.Id;
+        var chatId = callbackQuery.Message!.Chat.Id;
+        var message = callbackQuery.Message;
+        var settings = _usersSettings.GetValueOrDefault(userId);
+
+        if (callbackQuery.Data == lang_ru || callbackQuery.Data == lang_ky)
         {
-            lang = lang_ru;
+            string answerText = SetLang(userId, chatId, callbackQuery.Data, ref settings);
 
-            await bot.AnswerCallbackQueryAsync(callbackQuery.Id, callbackQuery.Data);
+            await bot.AnswerCallbackQueryAsync(callbackQuery.Id, answerText);
 
-            List<List<KeyboardButton>> rusKeys =
-          [
-              ["Выбор позиции", "Список вакансий"]
-          ];
-            await bot.SendTextMessageAsync(
-                callbackQuery.Message!.Chat.Id, 
-                "Русский язык установлен",
-                replyMarkup: new ReplyKeyboardMarkup(rusKeys) { ResizeKeyboard = true });
+            await ShowMainMenu(userId, chatId, settings!);
+
+            return;
         }
-
-        if(callbackQuery.Data == lang_ky)
+        else if(settings is null)
         {
-            lang = lang_ky;
-
-            await bot.AnswerCallbackQueryAsync(callbackQuery.Id, callbackQuery.Data);
-
-            List<List<KeyboardButton>> rusKeys =
-           [
-               ["Позиция тандоо", "Вакансиялардын тизмеси"]
-           ];
-            await bot.SendTextMessageAsync(callbackQuery.Message!.Chat.Id, 
-                "Кыргыз тили орнотулду",
-                 replyMarkup: new ReplyKeyboardMarkup(rusKeys) { ResizeKeyboard = true });
-        }    
-
+            await AskLang(message);
+            return;
+        }        
     }
 
     var kyrBtn = InlineKeyboardButton.WithCallbackData(lang_ky);
@@ -89,21 +76,93 @@ try
 
     async Task OnMessage(Message message)
     {
+        var userId = message.From!.Id;
         var chatId = message.Chat.Id;
         var messageText = message.Text;
 
         Console.WriteLine($"Received a '{messageText}' message in chat {chatId}.");
+        var settings = _usersSettings.GetValueOrDefault(message.From!.Id);
 
-        if (messageText == "/start" || messageText == "/lang")
+        if (settings is null)
         {
-            Message sentMessage = await bot.SendTextMessageAsync(
-               chatId: chatId,
-               text: "Выберите язык\n\nТилди тандаңыз",
-               replyMarkup: langKeyboard,
-               cancellationToken: source.Token);
+            await AskLang(message);
+            return;
+        }
+        if (messageText == "/start")
+        {
+            // TODO go to main menu 
+        }
+        if(messageText == "/lang")
+        {
+            await AskLang(message);
+            return;
+        }
+        if(messageText == "/vacancies" || 
+            messageText == "Список вакансий" || 
+            messageText == "Вакансиялардын тизмеси")
+        {
+            await GetVacancies(userId, chatId, settings);
+            return;
         }
     }
-    async Task OnUnhandledUpdate(Update update) => Console.WriteLine($"Received unhandled update {update.Type}");
+
+    string SetLang(long userId, long chatId, string lang, ref UserSettings? settings)
+    {       
+        if (settings is not null)
+            settings.Language = lang;
+        else
+        {
+            settings = new() { Language = lang };
+
+            _usersSettings.Add(userId, settings);
+        }
+
+        return lang == lang_ru ? "Русский язык установлен" : "Кыргыз тили орнотулду";
+    }
+
+    async Task AskLang(Message message)
+    {
+        var userId = message.From!.Id;
+        var chatId = message.Chat.Id;
+
+        Message sentMessage = await bot.SendTextMessageAsync(
+            chatId: chatId,
+            text: "Выберите язык\n\nТилди тандаңыз",
+            replyMarkup: langKeyboard,
+            cancellationToken: source.Token);
+    }
+
+    async Task ShowMainMenu(long userId, long chatId, UserSettings settings)
+    {
+        List<List<KeyboardButton>> keys = settings.Language == lang_ky ?
+        [
+           ["Позиция тандоо", "Вакансиялардын тизмеси"]
+        ]
+        :
+        [
+          ["Выбор позиции", "Список вакансий"]
+        ];
+
+        string answerText = settings.Language == lang_ru ? "Главное меню" : "Башкы меню";
+
+        await bot.SendTextMessageAsync(
+            chatId,
+            answerText,
+            replyMarkup: new ReplyKeyboardMarkup(keys) { ResizeKeyboard = true });
+    }
+
+    async Task GetVacancies(long userId, long chatId, UserSettings settings)
+    {
+        string text = settings.Language == lang_ru ? "Типа вакансии" : "Вакансиялар тизмеси";
+
+        Message sentMessage = await bot.SendTextMessageAsync(
+           chatId: chatId,
+           text: text,
+           cancellationToken: source.Token);
+    }
+
+    async Task OnUnhandledUpdate(Update update) 
+        => Console.WriteLine($"Received unhandled update {update.Type}");
     
 }
 catch (Exception ex)
