@@ -90,7 +90,8 @@ try
         }
         if (messageText == "/start")
         {
-            // TODO go to main menu 
+            await ShowMainMenu(userId, chatId, settings);
+            return;
         }
         if(messageText == "/lang")
         {
