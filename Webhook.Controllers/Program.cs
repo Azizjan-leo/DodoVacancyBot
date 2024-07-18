@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using Webhook.Controllers;
+using Webhook.Controllers.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +11,9 @@ var botConfigSection = builder.Configuration.GetSection("BotConfiguration");
 builder.Services.Configure<BotConfiguration>(botConfigSection);
 builder.Services.AddHttpClient("tgwebhook").RemoveAllLoggers().AddTypedClient<ITelegramBotClient>(
     httpClient => new TelegramBotClient(botConfigSection.Get<BotConfiguration>()!.BotToken, httpClient));
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddSingleton<Webhook.Controllers.Services.UpdateHandler>();
 builder.Services.ConfigureTelegramBotMvc();
