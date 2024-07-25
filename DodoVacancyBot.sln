@@ -9,8 +9,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Webhook.Controllers", "Webh
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{DA05E966-4121-42D4-B664-DC23D927C52C}"
 	ProjectSection(SolutionItems) = preProject
+		docker-compose.yml = docker-compose.yml
 		Dockerfile = Dockerfile
 	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DAL", "DAL\DAL.csproj", "{36930C4B-F82C-44AC-A7EC-494916104DAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -26,6 +29,10 @@ Global
 		{35EEA08B-73E0-49D8-98AD-44955F192725}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{35EEA08B-73E0-49D8-98AD-44955F192725}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{35EEA08B-73E0-49D8-98AD-44955F192725}.Release|Any CPU.Build.0 = Release|Any CPU
+		{36930C4B-F82C-44AC-A7EC-494916104DAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{36930C4B-F82C-44AC-A7EC-494916104DAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{36930C4B-F82C-44AC-A7EC-494916104DAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{36930C4B-F82C-44AC-A7EC-494916104DAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
