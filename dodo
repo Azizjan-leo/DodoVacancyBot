@@ -1,0 +1,50 @@
+version: "3.8"
+services:
+  db:
+    image: pgrouting/pgrouting:latest
+
+    restart: always
+    ports:
+      - "5454:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - customname
+
+  bot:
+    image: dodobot
+    ports:
+      - "8443:8443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Staging
+      - ASPNETCORE_HTTP_PORTS=8443
+      - DefaultConnection=Host=db;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      - PhotosDbConnectionString=Host=irdb;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      - ManageDbConnectionString=Host=irdb;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      - WorkflowDbConnectionString=Host=irdb;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      - Content__ImageMaxLength=105000000
+      - Content__AllowedExtensions=.png,.jpg
+      - Content__UploadsSubDirectory=tempImages
+      - Logger__ElasticUri=http://elasticsearch:9200
+      - S3__AccessKey=YCAJEquhGuAWecywpsp6BJeZr
+      - S3__SecretKey=YCNMWhc2A7_TqV_sLQ2PeB3C2BsWqSBXegzeLlq-
+      - S3__BucketName=ir-s3
+      - S3__ServiceUrl=https://s3.yandexcloud.net
+      - MiniPhotoWidth=720
+      - MicroPhotoWidth=210
+      - S3__Logger__BucketName=ir-logs
+      - S3__Logger__Path=ir-api_.log
+    networks:
+      - customname
+    volumes:
+      - ~/.aspnet/https:/https:ro
+
+networks:
+  customname:
+
+volumes:
+  postgres_data:
+    external: true

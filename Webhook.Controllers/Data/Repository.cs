@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using DAL.Enitities;
-using DAL;
+using Webhook.Controllers.Data.Entities;
 
 namespace Webhook.Controllers.Data;
 

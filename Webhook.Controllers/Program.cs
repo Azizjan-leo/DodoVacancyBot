@@ -1,8 +1,8 @@
-using DAL;
 using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using Webhook.Controllers;
 using Webhook.Controllers.Data;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 var builder = WebApplication.CreateBuilder(args);
 
