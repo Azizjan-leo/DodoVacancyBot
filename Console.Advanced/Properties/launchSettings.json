@@ -1,7 +1,10 @@
 {
   "profiles": {
     "Console.Advanced": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
     "Docker": {
       "commandName": "Docker"

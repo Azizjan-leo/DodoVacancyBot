@@ -20,10 +20,9 @@ services:
     ports:
       - "80:80"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Release
+      - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_HTTP_PORTS=80
       - DefaultConnection=Host=db;Port=5432;Username=postgres;Password=postgres;Database=postgres
-      - BotConfiguration__BotToken=1450091609:AAGlaCm14Z_ldUs9pBc8RCqnnV78BgiYy8A
     networks:
       - customname
     volumes:
