@@ -6,9 +6,6 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MainConsole", "MainConsole\MainConsole.csproj", "{711B7BFC-7965-4941-8B2C-F6FCC2592C23}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{DA05E966-4121-42D4-B664-DC23D927C52C}"
-	ProjectSection(SolutionItems) = preProject
-		docker-compose.yml = docker-compose.yml
-	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Console.Advanced", "Console.Advanced\Console.Advanced.csproj", "{7726F6F1-4463-4CB6-9A74-B4D7D585B82E}"
 EndProject
