@@ -13,10 +13,7 @@ IHost host = Host.CreateDefaultBuilder(args)
     {
         // Register Bot configuration
         services.Configure<BotConfiguration>(context.Configuration.GetSection("BotConfiguration"));
-
-        System.Console.WriteLine("BOT TOKEN: " + 
-            context.Configuration.GetSection("BotConfiguration").GetValue<string>("BotToken"));
- 
+         
         // Register named HttpClient to benefits from IHttpClientFactory
         // and consume it with ITelegramBotClient typed client.
         // More read:
@@ -30,7 +27,6 @@ IHost host = Host.CreateDefaultBuilder(args)
                     TelegramBotClientOptions options = new(botConfiguration.BotToken);
                     return new TelegramBotClient(options, httpClient);
                 });
-
         services.AddDbContext<ApplicationContext>(options => 
             options.UseNpgsql(context.Configuration.GetConnectionString("DefaultConnection")));
 
