@@ -27,7 +27,7 @@ IHost host = Host.CreateDefaultBuilder(args)
                     TelegramBotClientOptions options = new(botConfiguration.BotToken);
                     return new TelegramBotClient(options, httpClient);
                 });
-        services.AddDbContext<ApplicationContext>(options => 
+        services.AddDbContext<ApplicationDBContext>(options => 
             options.UseNpgsql(context.Configuration.GetConnectionString("DefaultConnection")));
 
         services.AddScoped<UpdateHandler>();
