@@ -363,3 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /Console.Advanced/docker-compose.yml
 /Console.Advanced/appsettings.Development.json
+/Console.Advanced/prod-compse.yml
