@@ -4,6 +4,7 @@ using Console.Advanced;
 using Console.Advanced.Services;
 using Microsoft.EntityFrameworkCore;
 using Console.Advanced.Data;
+using System.Configuration;
 
 var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")!;
 
@@ -27,8 +28,12 @@ IHost host = Host.CreateDefaultBuilder(args)
                     TelegramBotClientOptions options = new(botConfiguration.BotToken);
                     return new TelegramBotClient(options, httpClient);
                 });
-        services.AddDbContext<ApplicationDBContext>(options => 
-            options.UseNpgsql(context.Configuration.GetConnectionString("DefaultConnection")));
+
+        services.AddScoped<MyDbContextFactory>(provider =>
+        {
+            var connectionString = context.Configuration.GetConnectionString("DefaultConnection")!;
+            return new MyDbContextFactory(connectionString);
+        });
 
         services.AddScoped<UpdateHandler>();
         services.AddScoped<ReceiverService>();

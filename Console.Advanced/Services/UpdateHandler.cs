@@ -1,5 +1,6 @@
 ﻿using Console.Advanced.Data;
 using Console.Advanced.Models;
+using Microsoft.EntityFrameworkCore;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -10,11 +11,11 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace Console.Advanced.Services;
 
-public sealed class UpdateHandler(ITelegramBotClient _bot, ILogger<UpdateHandler> _logger, 
-    ApplicationDBContext _context) : IUpdateHandler
+public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotClient _bot, 
+    MyDbContextFactory _contextFactory) : IUpdateHandler
 {
     private static readonly InputPollOption[] PollOptions = ["Hello", "World!"];
-
+    
     public async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, HandleErrorSource source, CancellationToken cancellationToken)
     {
         _logger.LogInformation("HandleError: {Exception}", exception);
@@ -81,10 +82,28 @@ public sealed class UpdateHandler(ITelegramBotClient _bot, ILogger<UpdateHandler
 
     async Task<Message> Usage(Message msg)
     {
-        const string usage = """
-                <b><u>Menu</u></b>:
-                /language       - Тил тандоо | Выбор языка
-            """;
+        string usage = string.Empty;    
+
+        long userId = msg.From!.Id;
+
+        using var context = _contextFactory.CreateDbContext();
+
+        var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
+
+        if (user is null)
+            return await AskLanguage(msg);
+
+        
+        usage = user.Lang == Language.KY ? """
+            <b><u>Меню</u></b>:
+            /language       - Тил тандоо
+            /vacanies       - Бош орундар
+        """ : """
+            <b><u>Меню</u></b>:
+            /language       - Выбор языка 
+            /vacancies      - Вакансии
+        """;
+        
         return await _bot.SendTextMessageAsync(msg.Chat, usage, parseMode: ParseMode.Html, replyMarkup: new ReplyKeyboardRemove());
     }
 
@@ -169,7 +188,9 @@ public sealed class UpdateHandler(ITelegramBotClient _bot, ILogger<UpdateHandler
     {
         long userId = callbackQuery.From.Id;
 
-        var user = await _context.Users.FindAsync(userId);
+        using var context = _contextFactory.CreateDbContext();
+
+        var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
         
 
         if (user is null)
@@ -177,24 +198,30 @@ public sealed class UpdateHandler(ITelegramBotClient _bot, ILogger<UpdateHandler
             user = new AppUser()
             {
                 Id = userId,
-                Lang = callbackQuery.Data
+                Lang = callbackQuery.Data!
             };
-            _context.Users.Add(user);
+            context.Users.Add(user);
         }
         else
         {
-            user.Lang = callbackQuery.Data;
+            user.Lang = callbackQuery.Data!;
         }
 
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         string text = (user.Lang == Language.RU) ?
             "Выбран русский язык" :
             "Кыргыз тили тандалды";
 
-
-        await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, text);
         await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, text);
+
+        Message msg = new()
+        {
+            From = new User() { Id = callbackQuery.From.Id },
+            Chat = callbackQuery.Message.Chat
+        };
+
+        await Usage(msg);
     }
 
     async Task OnError(long chatId, string? language)
