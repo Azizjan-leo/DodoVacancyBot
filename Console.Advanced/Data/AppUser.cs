@@ -10,4 +10,6 @@ public class AppUser
 
     [Length(2, 2)]
     public string Lang { get; set; } = default!;
+
+    public City? City { get; set; }
 }

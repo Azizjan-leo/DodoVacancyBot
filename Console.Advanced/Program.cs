@@ -15,11 +15,6 @@ IHost host = Host.CreateDefaultBuilder(args)
         // Register Bot configuration
         services.Configure<BotConfiguration>(context.Configuration.GetSection("BotConfiguration"));
          
-        // Register named HttpClient to benefits from IHttpClientFactory
-        // and consume it with ITelegramBotClient typed client.
-        // More read:
-        //  https://docs.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-5.0#typed-clients
-        //  https://docs.microsoft.com/en-us/dotnet/architecture/microservices/implement-resilient-applications/use-httpclientfactory-to-implement-resilient-http-requests
         services.AddHttpClient("telegram_bot_client").RemoveAllLoggers()
                 .AddTypedClient<ITelegramBotClient>((httpClient, sp) =>
                 {
@@ -29,9 +24,13 @@ IHost host = Host.CreateDefaultBuilder(args)
                     return new TelegramBotClient(options, httpClient);
                 });
 
+        var connectionString = context.Configuration.GetConnectionString("DefaultConnection")!;
+
+        services.AddDbContext<ApplicationDBContext>(options =>
+            options.UseNpgsql(connectionString));
+
         services.AddScoped<MyDbContextFactory>(provider =>
         {
-            var connectionString = context.Configuration.GetConnectionString("DefaultConnection")!;
             return new MyDbContextFactory(connectionString);
         });
 

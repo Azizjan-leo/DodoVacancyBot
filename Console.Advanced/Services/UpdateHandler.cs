@@ -1,6 +1,7 @@
 ﻿using Console.Advanced.Data;
 using Console.Advanced.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -12,7 +13,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 namespace Console.Advanced.Services;
 
 public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotClient _bot, 
-    MyDbContextFactory _contextFactory) : IUpdateHandler
+    MyDbContextFactory _contextFactory, IOptions<BotConfiguration> _botConfig) : IUpdateHandler
 {
     private static readonly InputPollOption[] PollOptions = ["Hello", "World!"];
     
@@ -27,7 +28,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
     public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        
+
         await (update switch
         {
             { Message: { } message }                        => OnMessage(message),
@@ -54,6 +55,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         Message sentMessage = await (messageText.Split(' ')[0] switch
         {
             "/language" => AskLanguage(msg),
+            "/city" => AskCity(msg),
             "/photo" => SendPhoto(msg),
             "/inline_buttons" => SendInlineKeyboard(msg),
             "/keyboard" => SendReplyKeyboard(msg),
@@ -68,10 +70,28 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
     }
 
-    private async Task<Message> AskLanguage(Message msg)
+    async Task<Message> AskCity(Message msg)
     {
-        long userId = msg.From!.Id;
+        using var context = _contextFactory.CreateDbContext();
 
+        var user = await context.Users.FindAsync(msg.From!.Id);
+
+        if (user is null)
+            return await AskLanguage(msg);
+
+        var replyMarkup = new InlineKeyboardMarkup();
+
+        foreach (var city in await context.Cities.ToListAsync())
+            replyMarkup.AddNewRow().AddButton(city.Name, city.Name);
+
+        string text = user.Lang == Language.KY ?
+            "Шаарды тандаңыз" : "Выберите город";
+
+        return await _bot.SendTextMessageAsync(msg.Chat, text, replyMarkup: replyMarkup);
+    }
+
+    async Task<Message> AskLanguage(Message msg)
+    {
         var replyMarkup = new InlineKeyboardMarkup()
             .AddNewRow()
                 .AddButton("Кыргыз тили", Language.KY)
@@ -96,11 +116,15 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         
         usage = user.Lang == Language.KY ? """
             <b><u>Меню</u></b>:
-            /language       - Тил тандоо
+            /language      - Тил тандоо
+            /city                 - Шаарды тандоо
+            /positions      - Позицияны тандоо
             /vacanies       - Бош орундар
         """ : """
             <b><u>Меню</u></b>:
             /language       - Выбор языка 
+            /city           - Выбор города
+            /positions      - Выбор позиции
             /vacancies      - Вакансии
         """;
         
@@ -177,6 +201,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         await (callbackQuery.Data switch
         {
             Language.KY or Language.RU => SetLanguage(callbackQuery),
+            "Бишкек" => SetCity(callbackQuery),
             _ => throw new NotImplementedException($"Unknown callbackQuery: {callbackQuery.Data}")
         });
 
@@ -184,7 +209,44 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         //await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, $"Received {callbackQuery.Data}");
     }
 
-    private async Task SetLanguage(CallbackQuery callbackQuery)
+    async Task SetCity(CallbackQuery callbackQuery)
+    {
+        long userId = callbackQuery.From.Id;
+
+        using var context = _contextFactory.CreateDbContext();
+
+        var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
+
+
+        if (user is null)
+        {
+            await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, "Тилди тандаңыз | Выберите язык");
+            await AskLanguage(callbackQuery.Message!);
+            return;
+        }
+       
+        var city = await context.Cities.FirstAsync(x => x.Name == callbackQuery.Data!)
+            ??throw new Exception($"A city with name {callbackQuery.Data} not found!");
+
+        user.City = city;
+        await context.SaveChangesAsync();
+       
+        string text = (user.Lang == Language.RU) ?
+            $"Выбран город {city.Name}" :
+            $"{city.Name} шаары тандалды";
+
+        Message msg = new()
+        {
+            Chat = callbackQuery.Message.Chat,
+            From = new User { Id = userId },
+        };
+
+        await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, text);
+
+        await Usage(msg);
+    }
+
+    async Task SetLanguage(CallbackQuery callbackQuery)
     {
         long userId = callbackQuery.From.Id;
 
