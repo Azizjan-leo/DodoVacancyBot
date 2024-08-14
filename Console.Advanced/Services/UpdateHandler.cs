@@ -54,8 +54,8 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         Message sentMessage = await (messageText.Split(' ')[0] switch
         {
-            "/language" => AskLanguage(msg),
-            "/city" => AskCity(msg),
+            "/language" => AskLanguage(msg.Chat),
+            "/city" => AskCity(msg.From.Id, msg.Chat),
             "/photo" => SendPhoto(msg),
             "/inline_buttons" => SendInlineKeyboard(msg),
             "/keyboard" => SendReplyKeyboard(msg),
@@ -70,14 +70,14 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
     }
 
-    async Task<Message> AskCity(Message msg)
+    async Task<Message> AskCity(long userId, Chat chat)
     {
         using var context = _contextFactory.CreateDbContext();
 
-        var user = await context.Users.FindAsync(msg.From!.Id);
+        var user = await context.Users.FindAsync(userId);
 
         if (user is null)
-            return await AskLanguage(msg);
+            return await AskLanguage(chat);
 
         var replyMarkup = new InlineKeyboardMarkup();
 
@@ -87,17 +87,17 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         string text = user.Lang == Language.KY ?
             "Шаарды тандаңыз" : "Выберите город";
 
-        return await _bot.SendTextMessageAsync(msg.Chat, text, replyMarkup: replyMarkup);
+        return await _bot.SendTextMessageAsync(chat, text, replyMarkup: replyMarkup);
     }
 
-    async Task<Message> AskLanguage(Message msg)
+    async Task<Message> AskLanguage(Chat chat)
     {
         var replyMarkup = new InlineKeyboardMarkup()
             .AddNewRow()
                 .AddButton("Кыргыз тили", Language.KY)
                 .AddButton("Русский", Language.RU);
 
-        return await _bot.SendTextMessageAsync(msg.Chat, "Тилди тандаңыз\n\nВыберите язык", replyMarkup: replyMarkup);
+        return await _bot.SendTextMessageAsync(chat, "Тилди тандаңыз\n\nВыберите язык", replyMarkup: replyMarkup);
     }
 
     async Task<Message> Usage(Message msg)
@@ -111,24 +111,31 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 
         if (user is null)
-            return await AskLanguage(msg);
+            return await AskLanguage(msg.Chat);
+
+        InlineKeyboardMarkup inlineMarkup = new();
+
+        if(user.Lang == Language.KY)
+        {
+            inlineMarkup.AddNewRow()
+                    .AddButton("Тил тандоо", "language")
+                .AddNewRow()
+                    .AddButton("Шаарды тандоо", "city");
+                //.AddNewRow()
+                //    .AddButton("Бош орундар", "vacanies");
+        }
+        else
+        {
+            inlineMarkup.AddNewRow()
+                    .AddButton("Выбор языка", "language")
+                .AddNewRow()
+                    .AddButton("Выбор города", "city");
+                //.AddNewRow()
+                //    .AddButton("Вакансии", "vacanies");
+        }
 
         
-        usage = user.Lang == Language.KY ? """
-            <b><u>Меню</u></b>:
-            /language      - Тил тандоо
-            /city                 - Шаарды тандоо
-            /positions      - Позицияны тандоо
-            /vacanies       - Бош орундар
-        """ : """
-            <b><u>Меню</u></b>:
-            /language       - Выбор языка 
-            /city           - Выбор города
-            /positions      - Выбор позиции
-            /vacancies      - Вакансии
-        """;
-        
-        return await _bot.SendTextMessageAsync(msg.Chat, usage, parseMode: ParseMode.Html, replyMarkup: new ReplyKeyboardRemove());
+        return await _bot.SendTextMessageAsync(msg.Chat, "Меню:", replyMarkup: inlineMarkup);
     }
 
     async Task<Message> SendPhoto(Message msg)
@@ -198,12 +205,28 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
     {
         _logger.LogInformation("Received inline keyboard callback from: {CallbackQueryId}", callbackQuery.Id);
 
-        await (callbackQuery.Data switch
+        switch (callbackQuery.Data)
         {
-            Language.KY or Language.RU => SetLanguage(callbackQuery),
-            "Бишкек" => SetCity(callbackQuery),
-            _ => throw new NotImplementedException($"Unknown callbackQuery: {callbackQuery.Data}")
-        });
+            case Language.KY:
+                await SetLanguage(callbackQuery);
+                break;
+            case Language.RU:
+                await SetLanguage(callbackQuery);
+                break;
+            case "Бишкек":
+                await SetCity(callbackQuery);
+                break;
+            case "language":
+                await _bot.AnswerCallbackQueryAsync(callbackQuery.Id);
+                await AskLanguage(callbackQuery.Message!.Chat);
+                break;
+            case "city":
+                await _bot.AnswerCallbackQueryAsync(callbackQuery.Id);
+                await AskCity(callbackQuery.From.Id, callbackQuery.Message.Chat);
+                break;
+            default:
+                throw new NotImplementedException($"Unknown callbackQuery: {callbackQuery.Data}");
+        }
 
         //await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, $"Received {callbackQuery.Data}");
         //await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, $"Received {callbackQuery.Data}");
@@ -221,7 +244,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         if (user is null)
         {
             await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, "Тилди тандаңыз | Выберите язык");
-            await AskLanguage(callbackQuery.Message!);
+            await AskLanguage(callbackQuery.Message.Chat);
             return;
         }
        
