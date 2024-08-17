@@ -1,7 +1,9 @@
 ﻿using Console.Advanced.Data;
 using Console.Advanced.Models;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.VisualBasic;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -28,7 +30,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
     public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-
+        
         await (update switch
         {
             { Message: { } message }                        => OnMessage(message),
@@ -46,27 +48,65 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         });
     }
 
-    private async Task OnMessage(Message msg)
+    async Task SaveContact(Message message)
     {
-        _logger.LogInformation("Receive message type: {MessageType}", msg.Type);
-        if (msg.Text is not { } messageText)
+        long userId = message.Contact!.UserId!.Value;
+        using var context = _contextFactory.CreateDbContext();
+        var user = await context.Users.FindAsync(userId);
+
+        if(user is null)
+        {
+            user = new AppUser()
+            {
+                Id = userId,
+                Language = Language.RU,
+                PhoneNumber = message.Contact.PhoneNumber
+            };
+            context.Users.Add(user);
+            await context.SaveChangesAsync();
+        }
+        else
+        {
+            user.PhoneNumber = message.Contact.PhoneNumber;
+
+            await context.SaveChangesAsync();
+        }
+
+        await _bot.SendTextMessageAsync(message.Chat, 
+            "Принято 😊 HR-менеджер свяжется с вами в ближайшее время", 
+            replyMarkup: new ReplyKeyboardRemove());
+
+        await Usage(message);
+    }
+
+    private async Task OnMessage(Message message)
+    {
+        _logger.LogInformation("Receive message type: {MessageType}", message.Type);
+
+        if (message.Contact is not null)
+        {
+            await SaveContact(message);
+            return;
+        }
+
+        if (message.Text is not { } messageText)
             return;
 
         Message sentMessage = await (messageText.Split(' ')[0] switch
         {
-            "/vacancies" => ShowPositions(msg.From.Id, msg.Chat),
-            "/language" => AskLanguage(msg.Chat),
-            "/city" => AskCity(msg.From.Id, msg.Chat),
-            "/photo" => SendPhoto(msg),
-            "/inline_buttons" => SendInlineKeyboard(msg),
-            "/keyboard" => SendReplyKeyboard(msg),
-            "/remove" => RemoveKeyboard(msg),
-            "/request" => RequestContactAndLocation(msg),
-            "/inline_mode" => StartInlineQuery(msg),
-            "/poll" => SendPoll(msg),
-            "/poll_anonymous" => SendAnonymousPoll(msg),
-            "/throw" => FailingHandler(msg),
-            _ => Usage(msg)
+            "/vacancies" => ShowPositions(message.From.Id, message.Chat),
+            "/language" => AskLanguage(message.Chat),
+            "/city" => AskCity(message.From.Id, message.Chat),
+            "/photo" => SendPhoto(message),
+            "/inline_buttons" => SendInlineKeyboard(message),
+            "/keyboard" => SendReplyKeyboard(message),
+            "/remove" => RemoveKeyboard(message),
+            "/request" => RequestContactAndLocation(message),
+            "/inline_mode" => StartInlineQuery(message),
+            "/poll" => SendPoll(message),
+            "/poll_anonymous" => SendAnonymousPoll(message),
+            "/throw" => FailingHandler(message),
+            _ => Usage(message)
         });
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
     }
@@ -230,6 +270,14 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             return;
         }
 
+        if (callbackData.StartsWith("applyToVacancy"))
+        {
+            int vacancyId = callbackData[^1] - '0';
+            await _bot.AnswerCallbackQueryAsync(callbackQuery!.Id);
+            await ApplyToVacancy(chat, userId, vacancyId);
+            return;
+        }
+
         switch (callbackData)
         {
             case Language.KY:
@@ -263,6 +311,15 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         //await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, $"Received {callbackQuery.Data}");
         //await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, $"Received {callbackQuery.Data}");
+    }
+
+    async Task ApplyToVacancy(Chat chat, long userId, int vacancyId)
+    {
+        var keyboard = new ReplyKeyboardMarkup().AddButton(KeyboardButton.WithRequestContact("Отправить свой тел. номер"));
+
+        await _bot.SendTextMessageAsync(chat,
+            "Пожалуйста, разрешите доступ к своему номеру, что бы менеджер мог с вами связаться",
+            replyMarkup: keyboard);
     }
 
     async Task<Message> ShowPositions(long userId, Chat chat)
@@ -302,7 +359,11 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         foreach(var vacancy in vacancies)
         {
             await using var fileStream = new FileStream($"Files/{vacancy.Position.KyName}_{vacancy.Language}.jpg", FileMode.Open, FileAccess.Read);
-            await _bot.SendPhotoAsync(chat, fileStream, caption: vacancy.Text);
+            
+            var replyMarkup = new InlineKeyboardMarkup()
+                .AddNewRow().AddButton("Откликнуться", $"applyToVacancy_{vacancy.Id}");
+
+            await _bot.SendPhotoAsync(chat, fileStream, caption: vacancy.Text, replyMarkup: replyMarkup);
         }
 
         return await _bot.SendTextMessageAsync(chat, "");
