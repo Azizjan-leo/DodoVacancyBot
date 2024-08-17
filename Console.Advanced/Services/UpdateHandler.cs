@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualBasic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -77,6 +79,11 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             replyMarkup: new ReplyKeyboardRemove());
 
         await Usage(message);
+
+        var hrChat = context.Settings.Where(x => x.Name == "HrChat").First();
+        Chat chat = JsonSerializer.Deserialize<Chat>(hrChat.Value)!;
+
+        await _bot.SendTextMessageAsync(chat, $"Получен новый отклик на ваканию! {message.Contact.PhoneNumber}");
     }
 
     private async Task OnMessage(Message message)
@@ -106,9 +113,31 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             "/poll" => SendPoll(message),
             "/poll_anonymous" => SendAnonymousPoll(message),
             "/throw" => FailingHandler(message),
+            "authorizeHr" => AuthorizeHr(message),
             _ => Usage(message)
         });
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
+    }
+
+    async Task<Message> AuthorizeHr(Message message)
+    {
+        using var context = _contextFactory.CreateDbContext();
+        var settings = await context.Settings.FirstAsync(x => x.Name == "HrPassword");
+
+        if (message.Text!.Split(' ')[1] != settings.Value)
+            return await _bot.SendTextMessageAsync(message.Chat, "Неверный пароль");
+
+        Settings hrChat = new()
+        {
+            Name = "HrChat",
+            Value = JsonSerializer.Serialize(message.Chat!)
+        };
+
+        context.Settings.Add(hrChat);
+        await context.SaveChangesAsync();
+
+
+        return await _bot.SendTextMessageAsync(message.Chat, "Поздравляю, Азизжан доверяет вам управление наймом в Додо! Теперь все отклики на вакансии будут перенаправляться вам");
     }
 
     async Task<Message> Application(long id, Chat chat)

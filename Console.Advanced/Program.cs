@@ -4,7 +4,6 @@ using Console.Advanced;
 using Console.Advanced.Services;
 using Microsoft.EntityFrameworkCore;
 using Console.Advanced.Data;
-using System.Configuration;
 
 var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")!;
 
@@ -14,7 +13,7 @@ IHost host = Host.CreateDefaultBuilder(args)
     {
         // Register Bot configuration
         services.Configure<BotConfiguration>(context.Configuration.GetSection("BotConfiguration"));
-         
+        
         services.AddHttpClient("telegram_bot_client").RemoveAllLoggers()
                 .AddTypedClient<ITelegramBotClient>((httpClient, sp) =>
                 {

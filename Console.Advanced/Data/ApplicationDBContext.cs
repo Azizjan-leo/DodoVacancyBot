@@ -26,4 +26,5 @@ public class ApplicationDBContext : DbContext
     public DbSet<City> Cities { get; set; }
     public DbSet<Position> Positions { get; set; }
     public DbSet<Vacancy> Vacancies { get; set; }
+    public DbSet<Settings> Settings { get; set; }
 }
