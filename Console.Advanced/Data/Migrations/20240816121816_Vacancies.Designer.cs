@@ -3,6 +3,7 @@ using System;
 using Console.Advanced.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Console.Advanced.Data.Migrations
 {
     [DbContext(typeof(ApplicationDBContext))]
-    partial class ApplicationContextModelSnapshot : ModelSnapshot
+    [Migration("20240816121816_Vacancies")]
+    partial class Vacancies
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -80,53 +83,6 @@ namespace Console.Advanced.Data.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Console.Advanced.Data.Position", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("KyName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("RuName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Positions");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            KyName = "Пиццамейкер",
-                            RuName = "Пиццамейкер"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            KyName = "Кассир",
-                            RuName = "Кассир"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            KyName = "Курьер",
-                            RuName = "Курьер"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            KyName = "Клинер",
-                            RuName = "Клинер"
-                        });
-                });
-
             modelBuilder.Entity("Console.Advanced.Data.Vacancy", b =>
                 {
                     b.Property<int>("Id")
@@ -139,16 +95,11 @@ namespace Console.Advanced.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int>("PositionId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("PositionId");
 
                     b.ToTable("Vacancies");
                 });
@@ -160,17 +111,6 @@ namespace Console.Advanced.Data.Migrations
                         .HasForeignKey("CityId");
 
                     b.Navigation("City");
-                });
-
-            modelBuilder.Entity("Console.Advanced.Data.Vacancy", b =>
-                {
-                    b.HasOne("Console.Advanced.Data.Position", "Position")
-                        .WithMany()
-                        .HasForeignKey("PositionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Position");
                 });
 #pragma warning restore 612, 618
         }
