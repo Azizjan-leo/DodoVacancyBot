@@ -15,4 +15,9 @@ public class AppUser
     public bool? HasAuto {  get; set; } = false;
 
     public City? City { get; set; }
+
+    /// <summary>
+    /// A vacancy a user interested in
+    /// </summary>
+    public Vacancy? Vacancy { get; set; }
 }

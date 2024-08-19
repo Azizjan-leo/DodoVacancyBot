@@ -54,18 +54,12 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
     {
         long userId = message.Contact!.UserId!.Value;
         using var context = _contextFactory.CreateDbContext();
-        var user = await context.Users.FindAsync(userId);
+        var user = await context.Users.Include(x => x.Vacancy).ThenInclude(x => x.Position).FirstOrDefaultAsync(x => x.Id == userId);
 
         if(user is null)
         {
-            user = new AppUser()
-            {
-                Id = userId,
-                Language = Language.RU,
-                PhoneNumber = message.Contact.PhoneNumber
-            };
-            context.Users.Add(user);
-            await context.SaveChangesAsync();
+            await AskLanguage(message.Chat);
+            return;
         }
         else
         {
@@ -74,16 +68,20 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             await context.SaveChangesAsync();
         }
 
+        string text = user.Language == Language.KY ?
+            "Кабыл алынды 😊 HR-менеджер жакын арада сиз менен байланышат"
+            : "Принято 😊 HR-менеджер свяжется с вами в ближайшее время";
+
         await _bot.SendTextMessageAsync(message.Chat, 
-            "Принято 😊 HR-менеджер свяжется с вами в ближайшее время", 
+            text, 
             replyMarkup: new ReplyKeyboardRemove());
 
-        await Usage(message);
+        await Usage(userId, message.Chat);
 
         var hrChat = context.Settings.Where(x => x.Name == "HrChat").First();
         Chat chat = JsonSerializer.Deserialize<Chat>(hrChat.Value)!;
 
-        await _bot.SendTextMessageAsync(chat, $"Получен новый отклик на ваканию! {message.Contact.PhoneNumber}");
+        await _bot.SendTextMessageAsync(chat, $"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! От {message.Contact.FirstName} {message.Contact.LastName} {message.Contact.PhoneNumber}");
     }
 
     private async Task OnMessage(Message message)
@@ -114,7 +112,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             "/poll_anonymous" => SendAnonymousPoll(message),
             "/throw" => FailingHandler(message),
             "authorizeHr" => AuthorizeHr(message),
-            _ => Usage(message)
+            _ => Usage(message.From!.Id, message.Chat)
         });
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
     }
@@ -182,23 +180,23 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         return await _bot.SendTextMessageAsync(chat, "Тилди тандаңыз\n\nВыберите язык", replyMarkup: replyMarkup);
     }
 
-    async Task<Message> Usage(Message msg)
+    async Task<Message> Usage(long userId, Chat chat)
     {
-        string usage = string.Empty;    
-
-        long userId = msg.From!.Id;
+        string usage = string.Empty;
 
         using var context = _contextFactory.CreateDbContext();
 
         var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 
         if (user is null)
-            return await AskLanguage(msg.Chat);
+            return await AskLanguage(chat);
 
+        string text = string.Empty;
         InlineKeyboardMarkup inlineMarkup = new();
 
         if(user.Language == Language.KY)
         {
+            text = "Башкы меню";
             inlineMarkup.AddNewRow()
                     .AddButton("Тил тандоо", "language")
                 .AddNewRow()
@@ -208,6 +206,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         }
         else
         {
+            text = "Главное меню";
             inlineMarkup.AddNewRow()
                     .AddButton("Выбор языка", "language")
                 .AddNewRow()
@@ -217,7 +216,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         }
 
         
-        return await _bot.SendTextMessageAsync(msg.Chat, "Меню", replyMarkup: inlineMarkup);
+        return await _bot.SendTextMessageAsync(chat, text, replyMarkup: inlineMarkup);
     }
 
     async Task<Message> SendPhoto(Message msg)
@@ -293,7 +292,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         if (callbackData.StartsWith("position"))
         {
-            int positionId = callbackData[^1] - '0'; // eg position_1 = '3' - '0' = 3
+            int positionId = int.Parse(callbackData.Split('_')[1]);
             await _bot.AnswerCallbackQueryAsync(callbackQuery.Id);
             await ShowVacancies(chat, userId, positionId);
             return;
@@ -301,7 +300,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         if (callbackData.StartsWith("applyToVacancy"))
         {
-            int vacancyId = callbackData[^1] - '0';
+            int vacancyId = int.Parse(callbackData.Split('_')[1]);
             await _bot.AnswerCallbackQueryAsync(callbackQuery!.Id);
             await ApplyToVacancy(chat, userId, vacancyId);
             return;
@@ -334,6 +333,10 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
                 await ShowPositions(callbackQuery.From.Id, callbackQuery.Message.Chat);
                 break;
+            case "usage":
+                await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
+                await Usage(userId, chat);
+                break;
             default:
                 throw new NotImplementedException($"Unknown callbackQuery: {callbackQuery.Data}");
         }
@@ -344,10 +347,30 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
     async Task ApplyToVacancy(Chat chat, long userId, int vacancyId)
     {
-        var keyboard = new ReplyKeyboardMarkup().AddButton(KeyboardButton.WithRequestContact("Отправить свой тел. номер"));
+        using var context = _contextFactory.CreateDbContext();
+        var user = await context.Users.FindAsync(userId);
+        
+        user.Vacancy = await context.Vacancies.Where(x => x.Id == vacancyId).FirstAsync();
+        await context.SaveChangesAsync();
+
+        string keyText = string.Empty;
+        string messageText = string.Empty;
+
+        if(user.Language == Language.RU)
+        {
+            messageText = "Пожалуйста, разрешите доступ к своему номеру, что бы менеджер мог с вами связаться";
+            keyText = "Отправить свой тел. номер";
+        }
+        else
+        {
+            messageText = "Менеджер сиз менен байланышышы үчүн номериңизге кирүүгө уруксат бериңиз";
+            keyText = "Телефон номеримди жөнөтүү";
+        }
+
+        var keyboard = new ReplyKeyboardMarkup().AddButton(KeyboardButton.WithRequestContact(keyText));
 
         await _bot.SendTextMessageAsync(chat,
-            "Пожалуйста, разрешите доступ к своему номеру, что бы менеджер мог с вами связаться",
+            messageText,
             replyMarkup: keyboard);
     }
 
@@ -384,13 +407,26 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         var vacancies = await context.Vacancies.Include(x => x.Position)
             .Where(x => x.Language == user.Language && x.Position.Id == positionId)
             .ToListAsync();
-        
-        foreach(var vacancy in vacancies)
+
+        foreach (var vacancy in vacancies)
         {
             await using var fileStream = new FileStream($"Files/{vacancy.Position.KyName}_{vacancy.Language}.jpg", FileMode.Open, FileAccess.Read);
-            
-            var replyMarkup = new InlineKeyboardMarkup()
-                .AddNewRow().AddButton("Откликнуться", $"applyToVacancy_{vacancy.Id}");
+
+            var replyMarkup = new InlineKeyboardMarkup();
+
+            if (user.Language == Language.RU)
+            {
+                replyMarkup
+                    .AddNewRow().AddButton("Откликнуться", $"applyToVacancy_{vacancy.Id}")
+                    .AddNewRow().AddButton("Вакансии", "vacancies").AddButton("Главное меню", "usage");
+            }
+            else
+            {
+                replyMarkup
+                    .AddNewRow().AddButton("Жооп берүү", $"applyToVacancy_{vacancy.Id}")
+                    .AddNewRow().AddButton("Бош орундар", "vacancies").AddButton("Башкы меню", "usage");
+            }
+                
 
             await _bot.SendPhotoAsync(chat, fileStream, caption: vacancy.Text, replyMarkup: replyMarkup);
         }
@@ -424,15 +460,9 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             $"Выбран город {city.Name}" :
             $"{city.Name} шаары тандалды";
 
-        Message msg = new()
-        {
-            Chat = callbackQuery.Message.Chat,
-            From = new User { Id = userId },
-        };
-
         await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, text);
 
-        await Usage(msg);
+        await Usage(userId, callbackQuery.Message!.Chat);
     }
 
     async Task SetLanguage(CallbackQuery callbackQuery)
@@ -466,13 +496,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, text);
 
-        Message msg = new()
-        {
-            From = new User() { Id = callbackQuery.From.Id },
-            Chat = callbackQuery.Message.Chat
-        };
-
-        await Usage(msg);
+        await Usage(userId, callbackQuery.Message!.Chat);
     }
 
     async Task OnError(long chatId, string? language)
