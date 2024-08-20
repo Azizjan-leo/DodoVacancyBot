@@ -61,12 +61,37 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             await AskLanguage(message.Chat);
             return;
         }
-        else
-        {
-            user.PhoneNumber = message.Contact.PhoneNumber;
 
+        var hrJson = context.Settings.Where(x => x.Name == "Hr").First();
+        User hr = JsonSerializer.Deserialize<User>(hrJson.Value)!;
+
+        user.PhoneNumber = message.Contact.PhoneNumber;
+
+        if(hr.Id == message.From!.Id)
+        {
+            var oldContact = await context.Settings.Where(x => x.Name == "HrContact").FirstOrDefaultAsync();
+            if(oldContact is not null) 
+            {
+                oldContact.Value = JsonSerializer.Serialize(message.Contact);
+            }
+            else
+            {
+                Settings HrContact = new()
+                {
+                    Name = "HrContact",
+                    Value = JsonSerializer.Serialize(message.Contact),
+                };
+                context.Settings.Add(HrContact);
+            }
             await context.SaveChangesAsync();
+            await _bot.SendTextMessageAsync(message.Chat, 
+                $"Ваш контакт сохранен для передачи соискателям",
+                replyMarkup: new ReplyKeyboardRemove());
+            await Usage(userId, message.Chat);
+            return;
         }
+
+        await context.SaveChangesAsync();
 
         string text = user.Language == Language.KY ?
             "Кабыл алынды 😊 HR-менеджер жакын арада сиз менен байланышат"
@@ -78,10 +103,10 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         await Usage(userId, message.Chat);
 
-        var hrChat = context.Settings.Where(x => x.Name == "HrChat").First();
-        Chat chat = JsonSerializer.Deserialize<Chat>(hrChat.Value)!;
+        var hrChatJson = context.Settings.Where(x => x.Name == "HrChat").First();
+        Chat hrChat = JsonSerializer.Deserialize<Chat>(hrChatJson.Value)!;
 
-        await _bot.SendTextMessageAsync(chat, $"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! От {message.Contact.FirstName} {message.Contact.LastName} {message.Contact.PhoneNumber}");
+        await _bot.SendTextMessageAsync(hrChat, $"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! От {message.Contact.FirstName} {message.Contact.LastName} {message.Contact.PhoneNumber}");
     }
 
     private async Task OnMessage(Message message)
@@ -120,18 +145,44 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
     async Task<Message> AuthorizeHr(Message message)
     {
         using var context = _contextFactory.CreateDbContext();
-        var settings = await context.Settings.FirstAsync(x => x.Name == "HrPassword");
+        var hrPassword = await context.Settings.FirstAsync(x => x.Name == "HrPassword");
 
-        if (message.Text!.Split(' ')[1] != settings.Value)
+        if (message.Text!.Split(' ')[1] != hrPassword.Value)
             return await _bot.SendTextMessageAsync(message.Chat, "Неверный пароль");
 
-        Settings hrChat = new()
-        {
-            Name = "HrChat",
-            Value = JsonSerializer.Serialize(message.Chat!)
-        };
+        Settings? hr = await context.Settings.Where(x => x.Name == "Hr").FirstOrDefaultAsync();
 
-        context.Settings.Add(hrChat);
+        if(hr is not null)
+        {
+            hr.Value = JsonSerializer.Serialize(message.From!);
+        }
+        else
+        {
+            hr = new Settings()
+            {
+                Name = "Hr",
+                Value = JsonSerializer.Serialize(message.From!)
+            };
+            context.Settings.Add(hr);
+        }
+
+        Settings? hrChat = await context.Settings.Where(x => x.Name == "HrChat").FirstOrDefaultAsync();
+
+        if(hrChat is not null)
+        {
+            hrChat.Value = JsonSerializer.Serialize(message.Chat!);
+        }
+        else
+        {
+            hrChat = new()
+            {
+                Name = "HrChat",
+                Value = JsonSerializer.Serialize(message.Chat!)
+            };
+            context.Settings.Add(hrChat);
+        }
+        
+
         await context.SaveChangesAsync();
 
 
@@ -202,7 +253,9 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 .AddNewRow()
                     .AddButton("Шаарды тандоо", "city")
                 .AddNewRow()
-                    .AddButton("Бош орундар", "vacancies");
+                    .AddButton("Бош орундар", "vacancies")
+                .AddNewRow()
+                    .AddButton("Менеджердын контакты", "hrContact");
         }
         else
         {
@@ -212,10 +265,11 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 .AddNewRow()
                     .AddButton("Выбор города", "city")
                 .AddNewRow()
-                    .AddButton("Вакансии", "vacancies");
+                    .AddButton("Вакансии", "vacancies")
+                .AddNewRow()
+                    .AddButton("Контакт менеджера", "hrContact");
         }
 
-        
         return await _bot.SendTextMessageAsync(chat, text, replyMarkup: inlineMarkup);
     }
 
@@ -337,12 +391,25 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
                 await Usage(userId, chat);
                 break;
+            case "hrContact":
+                await _bot.AnswerCallbackQueryAsync(callbackQuery.Id);
+                await ShowHrContact(chat);
+                break;
             default:
                 throw new NotImplementedException($"Unknown callbackQuery: {callbackQuery.Data}");
         }
 
         //await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, $"Received {callbackQuery.Data}");
         //await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, $"Received {callbackQuery.Data}");
+    }
+
+    async Task ShowHrContact(Chat chat)
+    {
+        var context = _contextFactory.CreateDbContext();
+        var json = await context.Settings.Where(x => x.Name == "HrContact").FirstAsync();
+        Contact contact = JsonSerializer.Deserialize<Contact>(json.Value)!;
+
+        await _bot.SendContactAsync(chat, contact.PhoneNumber, contact.FirstName, lastName: "Dodo HR");
     }
 
     async Task ApplyToVacancy(Chat chat, long userId, int vacancyId)
