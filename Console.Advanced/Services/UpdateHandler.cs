@@ -255,7 +255,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 .AddNewRow()
                     .AddButton("Бош орундар", "vacancies")
                 .AddNewRow()
-                    .AddButton("Менеджердын контакты", "hrContact");
+                    .AddButton("Менеджердин контакты", "hrContact");
         }
         else
         {
