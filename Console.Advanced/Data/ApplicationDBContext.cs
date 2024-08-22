@@ -27,4 +27,5 @@ public class ApplicationDBContext : DbContext
     public DbSet<Position> Positions { get; set; }
     public DbSet<Vacancy> Vacancies { get; set; }
     public DbSet<Settings> Settings { get; set; }
+    public DbSet<AppFIll> AppFIlls { get; set; }
 }

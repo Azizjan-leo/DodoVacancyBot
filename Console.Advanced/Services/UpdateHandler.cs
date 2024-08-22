@@ -1,9 +1,11 @@
 ﻿using Console.Advanced.Data;
 using Console.Advanced.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualBasic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Telegram.Bot;
@@ -67,6 +69,12 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         user.PhoneNumber = message.Contact.PhoneNumber;
 
+        var appFill = await context.AppFIlls.Where(x => x.Id == userId).FirstOrDefaultAsync();
+        if(appFill is not null) {
+            context.AppFIlls.Remove(appFill);
+            await context.SaveChangesAsync();
+        }
+
         if(hr.Id == message.From!.Id)
         {
             var oldContact = await context.Settings.Where(x => x.Name == "HrContact").FirstOrDefaultAsync();
@@ -90,7 +98,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             await Usage(userId, message.Chat);
             return;
         }
-
+        
         await context.SaveChangesAsync();
 
         string text = user.Language == Language.KY ?
@@ -106,7 +114,12 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         var hrChatJson = context.Settings.Where(x => x.Name == "HrChat").First();
         Chat hrChat = JsonSerializer.Deserialize<Chat>(hrChatJson.Value)!;
 
-        await _bot.SendTextMessageAsync(hrChat, $"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! От {message.Contact.FirstName} {message.Contact.LastName} {message.Contact.PhoneNumber}");
+        text = $@"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! 
+ФИО: {user.FullName} 
+Дата рождения: {user.DateOfBirth} 
+Тел. номер: {user.PhoneNumber}";
+
+        await _bot.SendTextMessageAsync(hrChat, text);
     }
 
     private async Task OnMessage(Message message)
@@ -121,23 +134,17 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         if (message.Text is not { } messageText)
             return;
+        long userId = message.From!.Id;
+        Chat chat = message.Chat;
 
         Message sentMessage = await (messageText.Split(' ')[0] switch
         {
-            "/vacancies" => ShowPositions(message.From.Id, message.Chat),
-            "/language" => AskLanguage(message.Chat),
-            "/city" => AskCity(message.From.Id, message.Chat),
-            "/photo" => SendPhoto(message),
-            "/inline_buttons" => SendInlineKeyboard(message),
-            "/keyboard" => SendReplyKeyboard(message),
-            "/remove" => RemoveKeyboard(message),
-            "/request" => RequestContactAndLocation(message),
-            "/inline_mode" => StartInlineQuery(message),
-            "/poll" => SendPoll(message),
-            "/poll_anonymous" => SendAnonymousPoll(message),
-            "/throw" => FailingHandler(message),
+            "/vacancies" => ShowPositions(userId, chat),
+            "/language" => AskLanguage(chat),
+            "/city" => AskCity(userId, chat),
+            "/application" => Application(userId, chat),
             "authorizeHr" => AuthorizeHr(message),
-            _ => Usage(message.From!.Id, message.Chat)
+            _ => Application(userId, chat, message)
         });
         _logger.LogInformation("The message was sent with id: {SentMessageId}", sentMessage.MessageId);
     }
@@ -189,16 +196,74 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         return await _bot.SendTextMessageAsync(message.Chat, "Поздравляю, Азизжан доверяет вам управление наймом в Додо! Теперь все отклики на вакансии будут перенаправляться вам");
     }
 
-    async Task<Message> Application(long id, Chat chat)
+    async Task<Message> Application(long userId, Chat chat, Message? message = null)
     {
         using var context = _contextFactory.CreateDbContext();
 
-        var user = await context.Users.FirstOrDefaultAsync(x => x.Id == id);
+        var user = await context.Users.FirstOrDefaultAsync(x => x.Id == userId);
 
         if (user is null)
             return await AskLanguage(chat);
 
+        AppFIll? appFill = await context.AppFIlls.Where(x => x.Id == userId).FirstOrDefaultAsync();
+        
+        if (appFill is null && message is null) 
+        {
+            appFill = new()
+            {
+                Id = userId,
+                Stage = "Name"
+            };
+            context.AppFIlls.Add(appFill);
+            await context.SaveChangesAsync();
+            return await _bot.SendTextMessageAsync(chat, "Напишите свое ФИО");
+        }
+
+        if (appFill is null)
+        {
+            return await Usage(userId, chat);
+        }
+
+        if (appFill.Stage == "Name")
+        {
+
+            if (message.Text.Split(' ').Length < 2)
+                return await _bot.SendTextMessageAsync(chat, "Напишите свое ФИО");
+
+            appFill.Value = message.Text;
+            await context.SaveChangesAsync();
+
+            var rm = new InlineKeyboardMarkup()
+                .AddNewRow().AddButton("Да", "application_Yes").AddButton("Нет", "application_No");
+
+            return await _bot.SendTextMessageAsync(chat, $"Вас зовут {appFill.Value}?", replyMarkup: rm);
+        }
+        if(appFill.Stage == "Age")
+        {
+            try
+            {
+                DateOnly dob = DateOnly.ParseExact(message.Text, "dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+                appFill.Value = message.Text;
+                await context.SaveChangesAsync();
+
+                var rm = new InlineKeyboardMarkup()
+                .AddNewRow().AddButton("Да", "application_Yes").AddButton("Нет", "application_No");
+
+                return await _bot.SendTextMessageAsync(chat, $"Ваша дата рождения {appFill.Value}?", replyMarkup: rm);
+            }
+            catch (Exception e)
+            {
+                return await AskDateOfBirth(userId, chat);
+            }
+
+        }
         return await AskLanguage(chat);
+    }
+
+    async Task<Message> AskDateOfBirth(long userId, Chat chat)
+    {
+        return  await _bot.SendTextMessageAsync(chat, "Пожалуйста, укажите свою дату рождения в формате дд.мм.гггг. \n Например: 16.08.2000");
     }
 
     async Task<Message> AskCity(long userId, Chat chat)
@@ -255,6 +320,8 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 .AddNewRow()
                     .AddButton("Бош орундар", "vacancies")
                 .AddNewRow()
+                    .AddButton("Анкета толтуруш", "application")
+                .AddNewRow()
                     .AddButton("Менеджердин контакты", "hrContact");
         }
         else
@@ -266,6 +333,8 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                     .AddButton("Выбор города", "city")
                 .AddNewRow()
                     .AddButton("Вакансии", "vacancies")
+                .AddNewRow()
+                    .AddButton("Заполнить анкету", "application")
                 .AddNewRow()
                     .AddButton("Контакт менеджера", "hrContact");
         }
@@ -360,6 +429,56 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
             return;
         }
 
+        if (callbackData.StartsWith("application") && callbackData.Split('_').Length > 1)
+        {
+            await _bot.AnswerCallbackQueryAsync(callbackQuery!.Id);
+
+            using var context = _contextFactory.CreateDbContext();
+            var appFill = await context.AppFIlls.Where(x => x.Id == userId).FirstAsync();
+
+            string answer = callbackData.Split("_")[1];
+            if (answer == "Yes")
+            {
+                var user = await context.Users.Where(x => x.Id == userId).FirstAsync();
+
+                switch (appFill.Stage)
+                {
+                    case "Name":
+                        user.FullName = appFill.Value;
+                        appFill.Stage = "Age";
+                        appFill.Value = null;
+                        await context.SaveChangesAsync();
+                        await AskDateOfBirth(userId, chat);
+                        break;
+                    case "Age":
+                        user.DateOfBirth = DateOnly.ParseExact(appFill.Value!, "dd.MM.yyyy", CultureInfo.InvariantCulture);
+                        appFill.Stage = "Phone";
+                        appFill.Value = null;
+                        await context.SaveChangesAsync();
+                        await AskPhone(userId, chat);
+                        break;
+                    default:
+                        break;
+                }
+                return;
+            }
+            if(answer == "No")
+            {
+                switch(appFill.Stage)
+                {
+                    case "Age":
+                        await AskDateOfBirth(userId, chat);
+                        break;
+                    case "Name":
+                        await _bot.SendTextMessageAsync(chat, "Напишите свое ФИО");
+                        break;
+                    default:
+                        break;
+                }
+            }
+            return;
+        }
+
         switch (callbackData)
         {
             case Language.KY:
@@ -379,10 +498,10 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 await _bot.AnswerCallbackQueryAsync(callbackQuery.Id);
                 await AskCity(userId, chat);
                 break;
-            //case "application":
-            //    await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
-            //    await Application(callbackQuery.From.Id, callbackQuery.Message.Chat);
-            //    break;
+            case "application":
+                await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
+                await Application(callbackQuery.From.Id, callbackQuery.Message.Chat);
+                break;
             case "vacancies":
                 await _bot.AnswerCallbackQueryAsync(callbackQuery?.Id);
                 await ShowPositions(callbackQuery.From.Id, callbackQuery.Message.Chat);
@@ -401,6 +520,32 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
         //await _bot.AnswerCallbackQueryAsync(callbackQuery.Id, $"Received {callbackQuery.Data}");
         //await _bot.SendTextMessageAsync(callbackQuery.Message!.Chat, $"Received {callbackQuery.Data}");
+    }
+
+    async Task<Message> AskPhone(long userId, Chat chat)
+    {
+        string keyText = string.Empty;
+        string messageText = string.Empty;
+
+        using var context = _contextFactory.CreateDbContext();
+        var user = await context.Users.Where(x => x.Id == userId).FirstAsync();
+
+        if (user.Language == Language.RU)
+        {
+            messageText = "Пожалуйста, разрешите доступ к своему номеру, что бы менеджер мог с вами связаться";
+            keyText = "Отправить свой тел. номер";
+        }
+        else
+        {
+            messageText = "Менеджер сиз менен байланышышы үчүн номериңизге кирүүгө уруксат бериңиз";
+            keyText = "Телефон номеримди жөнөтүү";
+        }
+
+        var keyboard = new ReplyKeyboardMarkup().AddButton(KeyboardButton.WithRequestContact(keyText));
+
+        return await _bot.SendTextMessageAsync(chat,
+            messageText,
+            replyMarkup: keyboard);
     }
 
     async Task ShowHrContact(Chat chat)
@@ -423,7 +568,13 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         string keyText = string.Empty;
         string messageText = string.Empty;
 
-        if(user.Language == Language.RU)
+        if (string.IsNullOrEmpty(user.FullName) || user.DateOfBirth is null)
+        {
+            await Application(userId, chat);
+            return;
+        }
+
+        if (user.Language == Language.RU)
         {
             messageText = "Пожалуйста, разрешите доступ к своему номеру, что бы менеджер мог с вами связаться";
             keyText = "Отправить свой тел. номер";
