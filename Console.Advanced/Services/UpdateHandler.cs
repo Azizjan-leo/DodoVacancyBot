@@ -67,7 +67,9 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         var hrJson = context.Settings.Where(x => x.Name == "Hr").First();
         User hr = JsonSerializer.Deserialize<User>(hrJson.Value)!;
 
-        user.PhoneNumber = message.Contact.PhoneNumber;
+        user.PhoneNumber = message.Contact.PhoneNumber.StartsWith('+') ?
+                        message.Contact.PhoneNumber
+                            : $"+{message.Contact.PhoneNumber}";
 
         var appFill = await context.AppFIlls.Where(x => x.Id == userId).FirstOrDefaultAsync();
         if(appFill is not null) {
@@ -114,9 +116,19 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         var hrChatJson = context.Settings.Where(x => x.Name == "HrChat").First();
         Chat hrChat = JsonSerializer.Deserialize<Chat>(hrChatJson.Value)!;
 
+        DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+
+        int age = today.Year - user.DateOfBirth!.Value.Year;
+
+        // Check if the birthday has occurred yet this year
+        if (today < user.DateOfBirth!.Value.AddYears(age))
+        {
+            age--;
+        }
+
         text = $@"Получен новый отклик на позицию {user.Vacancy.Position.RuName}! 
 ФИО: {user.FullName} 
-Дата рождения: {user.DateOfBirth} 
+Возраст: {age} 
 Тел. номер: {user.PhoneNumber}";
 
         await _bot.SendTextMessageAsync(hrChat, text);
