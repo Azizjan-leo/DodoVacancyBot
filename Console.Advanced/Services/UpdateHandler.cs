@@ -240,15 +240,24 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
         {
 
             if (message.Text.Split(' ').Length < 2)
-                return await _bot.SendTextMessageAsync(chat, "Напишите свое ФИО");
+            {
+                var txt = user.Language == Language.KY ?
+                            "Аты-жөнүңүздү жазыңыз" :
+                            "Напишите свое имя";
 
+                return await _bot.SendTextMessageAsync(chat, txt);
+            }
             appFill.Value = message.Text;
             await context.SaveChangesAsync();
 
             var rm = new InlineKeyboardMarkup()
                 .AddNewRow().AddButton("Да", "application_Yes").AddButton("Нет", "application_No");
 
-            return await _bot.SendTextMessageAsync(chat, $"Вас зовут {appFill.Value}?", replyMarkup: rm);
+            var text = user.Language == Language.KY ?
+                            $"Атыңыз {appFill.Value}?" :
+                            $"Вас зовут {appFill.Value}?";
+
+            return await _bot.SendTextMessageAsync(chat, text, replyMarkup: rm);
         }
         if(appFill.Stage == "Age")
         {
@@ -262,7 +271,11 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 var rm = new InlineKeyboardMarkup()
                 .AddNewRow().AddButton("Да", "application_Yes").AddButton("Нет", "application_No");
 
-                return await _bot.SendTextMessageAsync(chat, $"Ваша дата рождения {appFill.Value}?", replyMarkup: rm);
+                var text = user.Language == Language.KY ?
+                            $"Туулган күнүңүз {appFill.Value}?" :
+                            $"Ваша дата рождения {appFill.Value}?";
+
+                return await _bot.SendTextMessageAsync(chat, text, replyMarkup: rm);
             }
             catch (Exception e)
             {
@@ -275,7 +288,13 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
 
     async Task<Message> AskDateOfBirth(long userId, Chat chat)
     {
-        return  await _bot.SendTextMessageAsync(chat, "Пожалуйста, укажите свою дату рождения в формате дд.мм.гггг. \n Например: 16.08.2000");
+        using var context = _contextFactory.CreateDbContext();
+        var user = await context.Users.Where(x => x.Id == userId).FirstAsync();
+
+        string text = user.Language == Language.KY ?
+                        "Сураныч, туулган күнүңүздү кк.аа.жжжж форматында жазыңыз \nМисалы: 16.08.2000"
+                        : "Пожалуйста, укажите свою дату рождения в формате дд.мм.гггг. \n Например: 16.08.2000";
+        return  await _bot.SendTextMessageAsync(chat, text);
     }
 
     async Task<Message> AskCity(long userId, Chat chat)
@@ -332,7 +351,7 @@ public sealed class UpdateHandler(ILogger<UpdateHandler> _logger, ITelegramBotCl
                 .AddNewRow()
                     .AddButton("Бош орундар", "vacancies")
                 .AddNewRow()
-                    .AddButton("Анкета толтуруш", "application")
+                    .AddButton("Анкета толтуруу", "application")
                 .AddNewRow()
                     .AddButton("Менеджердин контакты", "hrContact");
         }
