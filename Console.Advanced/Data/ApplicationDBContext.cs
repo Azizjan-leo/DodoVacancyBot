@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Core.Data;
 
 namespace Console.Advanced.Data;
 public class ApplicationDBContext : DbContext

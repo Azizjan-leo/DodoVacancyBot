@@ -1,13 +1,9 @@
 ﻿using Console.Advanced.Data;
 using Console.Advanced.Models;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.VisualBasic;
 using System.Globalization;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
@@ -15,6 +11,8 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.InlineQueryResults;
 using Telegram.Bot.Types.ReplyMarkups;
+using Core.Data;
+
 
 namespace Console.Advanced.Services;
 
