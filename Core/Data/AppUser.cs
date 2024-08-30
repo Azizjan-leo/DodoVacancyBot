@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace Console.Advanced.Data;
+﻿namespace Core.Data;
 public class AppUser
 {
     /// <summary>

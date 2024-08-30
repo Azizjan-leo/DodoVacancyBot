@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Console.Advanced.Data;
+namespace Core.Data;
 public class AppFIll
 {
     /// <summary>

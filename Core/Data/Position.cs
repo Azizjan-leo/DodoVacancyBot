@@ -1,4 +1,4 @@
-﻿namespace Console.Advanced.Data;
+﻿namespace Core.Data;
 public class Position
 {
     public int Id { get; set; }
